@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrotatoRL – panel</title>
+<style>
+  :root { --bg:#16181d; --card:#20232b; --line:#323743; --text:#e6e8ec; --muted:#9aa3b2; --acc:#f2a33a; --ok:#4cc38a; --bad:#ef6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+  header { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:.5rem; align-items:center;
+           padding:.6rem 1rem; background:#111318; border-bottom:1px solid var(--line); }
+  header h1 { font-size:1.05rem; margin:0 1rem 0 0; color:var(--acc); }
+  main { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr); gap:1rem; padding:1rem; }
+  @media (max-width:1000px) { main { grid-template-columns:1fr; } }
+  details.card { background:var(--card); border:1px solid var(--line); border-radius:8px; margin-bottom:.8rem; }
+  details.card > summary { cursor:pointer; padding:.6rem .9rem; font-weight:600; }
+  details.card > summary small { font-weight:400; color:var(--muted); margin-left:.5rem; }
+  .fields { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:.55rem .9rem; padding:.2rem .9rem .9rem; }
+  .fields.compact { grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); }
+  .section { grid-column:1/-1; margin:.5rem 0 0; padding-top:.4rem; border-top:1px solid var(--line);
+             color:var(--acc); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  .field label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:.15rem; }
+  .field .help { font-size:.75rem; color:#7d8696; margin-top:.1rem; }
+  .field.bool label { display:flex; gap:.45rem; align-items:center; color:var(--text); font-size:.88rem; }
+  input[type=number], input[type=text], select { width:100%; padding:.35rem .45rem; background:#14161b; color:var(--text);
+           border:1px solid var(--line); border-radius:5px; font:inherit; }
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
+  button { padding:.4rem .8rem; border-radius:5px; border:1px solid var(--line); background:#2a2e38; color:var(--text);
+           font:inherit; cursor:pointer; }
+  button:hover { background:#353a46; }
+  button.primary { background:var(--acc); color:#1a1205; border-color:var(--acc); font-weight:600; }
+  button.danger { background:#5a2328; border-color:#7a2f35; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .spacer { flex:1; }
+  .badge { padding:.15rem .55rem; border-radius:99px; font-size:.8rem; background:#2a2e38; }
+  .badge.running, .badge.starting { background:#3b2f12; color:var(--acc); }
+  .badge.done { background:#173527; color:var(--ok); }
+  .badge.error { background:#3d1b1e; color:var(--bad); }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:.8rem .9rem; margin-bottom:.8rem; }
+  .panel h2 { font-size:.95rem; margin:0 0 .5rem; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:.4rem; }
+  .stat { background:#181b21; border-radius:6px; padding:.35rem .5rem; }
+  .stat b { display:block; font-size:1.05rem; }
+  .stat span { font-size:.72rem; color:var(--muted); }
+  progress { width:100%; height:8px; accent-color:var(--acc); }
+  table { width:100%; border-collapse:collapse; font-size:.8rem; }
+  th, td { text-align:left; padding:.25rem .35rem; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; }
+  pre#log { max-height:260px; overflow:auto; background:#0f1115; padding:.5rem; border-radius:6px; font-size:.74rem;
+            white-space:pre-wrap; margin:0; }
+  .err { color:var(--bad); }
+  .warn { color:var(--acc); }
+  .muted { color:var(--muted); font-size:.8rem; }
+  .hidden { display:none !important; }
+  .row { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BrotatoRL</h1>
+  <span id="state" class="badge" role="status" aria-live="polite">…</span>
+  <button id="start" class="primary">▶ Start</button>
+  <button id="stop" class="danger" disabled>■ Stop</button>
+  <span class="spacer"></span>
+  <label for="presetSel" class="muted">Preset</label>
+  <select id="presetSel" style="width:auto"><option value="">—</option></select>
+  <button id="presetLoad">Load</button>
+  <input id="presetName" type="text" placeholder="preset name" aria-label="Preset name" style="width:150px">
+  <button id="presetSave">Save</button>
+  <button id="exportBtn" title="Download the config as JSON">Export</button>
+  <input id="importFile" type="file" accept=".json" class="hidden" aria-label="Config file">
+  <button id="importBtn" title="Load a config from a JSON file">Import</button>
+  <button id="resetBtn" title="Restore default values">Defaults</button>
+</header>
+
+<main>
+  <section id="form" aria-label="Parameters"></section>
+
+  <section aria-label="Progress">
+    <div class="panel" id="ramPanel">
+      <h2>Resources</h2>
+      <p id="ramInfo" class="muted" role="status" aria-live="polite">…</p>
+    </div>
+    <div class="panel">
+      <h2>Game catalog</h2>
+      <p id="catalogInfo" class="muted">…</p>
+      <button id="catalogBtn">Refresh catalog from game</button>
+      <span class="muted">(briefly starts a hidden game instance, about 10–20 s)</span>
+    </div>
+    <div class="panel">
+      <h2>Current episode <span id="epLabel" class="muted"></span></h2>
+      <progress id="epProgress" max="1" value="0" aria-label="Episode progress"></progress>
+      <div class="stats" id="current"></div>
+      <div style="overflow:auto"><table id="workers" class="hidden"><thead><tr>
+        <th>instance</th><th>state</th><th>episode</th><th>wave</th><th>HP</th><th>steps/s</th><th>finished</th>
+      </tr></thead><tbody></tbody></table></div>
+      <p id="error" class="err" role="alert"></p>
+    </div>
+    <div class="panel">
+      <h2>Results</h2>
+      <p id="summary" class="muted">No results yet.</p>
+      <div style="overflow:auto"><table id="results"><thead><tr>
+        <th>#</th><th>inst.</th><th>seed</th><th>outcome</th><th>wave</th><th>return</th><th>steps</th><th>kills</th><th>mat.</th><th>damage</th><th>steps/s</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="panel">
+      <h2>Log</h2>
+      <pre id="log" aria-live="off"></pre>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const STORE = "brotato_rl_panel_config";
+let SCHEMA = [], DEFAULTS = {}, CATALOG = {}, config = {};
+
+const pretty = (id, prefix) => {
+  if (!id) return "";
+  let s = id.replace(prefix, "");
+  const m = s.match(/^(.*)_(\d)$/);
+  const tier = m ? " (" + ["I","II","III","IV"][+m[2]-1] + ")" : "";
+  if (m) s = m[1];
+  return s.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") + tier;
+};
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
+  const r = await fetch(path, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || r.statusText);
+  return data;
+}
+
+function deepMerge(base, extra) {
+  const out = JSON.parse(JSON.stringify(base));
+  for (const g in extra || {}) if (out[g] && typeof extra[g] === "object") Object.assign(out[g], extra[g]);
+  return out;
+}
+
+function save() { localStorage.setItem(STORE, JSON.stringify(config)); }
+
+// ---------- form rendering ----------
+function optionsFor(field, group) {
+  if (field.type === "select") return field.options;
+  if (field.type === "character") {
+    const chars = (CATALOG.characters || []).map(c => c.id);
+    if (!chars.includes(config.run.character)) chars.unshift(config.run.character);
+    return chars.map(id => [id, pretty(id, "character_")]).sort((a, b) => a[1].localeCompare(b[1]));
+  }
+  if (field.type === "weapon") {
+    const ch = (CATALOG.characters || []).find(c => c.id === config.run.character);
+    const list = [["", "(character's first option)"]];
+    for (const id of (ch ? ch.starting : [])) list.push([id, pretty(id, /^(weapon|item)_/)]);
+    if (config.run.weapon && !list.some(o => o[0] === config.run.weapon)) list.push([config.run.weapon, config.run.weapon + " (?)"]);
+    return list;
+  }
+  if (field.type === "danger") return (CATALOG.dangers || [0,1,2,3,4,5]).map(v => [v, "Danger " + v]);
+  if (field.type === "zone") return (CATALOG.zones || [0,1]).map(v => [v, v === 0 ? "0 – base game" : v + " – DLC"]);
+  return [];
+}
+
+function makeInput(group, field) {
+  const id = `f_${group}_${field.key}`;
+  const value = config[group][field.key];
+  let el;
+  if (field.type === "bool") {
+    el = document.createElement("input"); el.type = "checkbox"; el.checked = !!value;
+  } else if (["select","character","weapon","danger","zone"].includes(field.type)) {
+    el = document.createElement("select");
+    for (const [v, label] of optionsFor(field, group)) {
+      const o = document.createElement("option"); o.value = v; o.textContent = label; el.appendChild(o);
+    }
+    el.value = value ?? "";
+  } else {
+    el = document.createElement("input");
+    el.type = field.type === "text" ? "text" : "number";
+    if (field.type === "float") el.step = field.step ?? "any";
+    if (field.type === "int") el.step = 1;
+    if (field.min !== undefined) el.min = field.min;
+    if (field.max !== undefined) el.max = field.max;
+    el.value = value ?? "";
+    if (field.nullable) el.placeholder = "(empty)";
+  }
+  el.id = id;
+  el.addEventListener("change", () => {
+    let v;
+    if (field.type === "bool") v = el.checked;
+    else if (["int","float"].includes(field.type)) v = el.value === "" ? (field.nullable ? null : field.default) : Number(el.value);
+    else if (["danger","zone"].includes(field.type)) v = Number(el.value);
+    else v = el.value;
+    config[group][field.key] = v;
+    if (field.key === "character") config.run.weapon = "";
+    save();
+    if (["select", "character", "bool"].includes(field.type)) render(); else updateRam();
+  });
+  return el;
+}
+
+function render() {
+  const form = $("#form");
+  const open = new Set([...form.querySelectorAll("details[open]")].map(d => d.dataset.id));
+  const first = form.children.length === 0;
+  form.innerHTML = "";
+  for (const g of SCHEMA) {
+    const det = document.createElement("details");
+    det.className = "card"; det.dataset.id = g.id;
+    if (first ? ["run","game","agent","meta"].includes(g.id) : open.has(g.id)) det.open = true;
+    det.innerHTML = `<summary>${g.title}<small>${g.help || ""}</small></summary>`;
+    let box = document.createElement("div"); box.className = "fields"; det.appendChild(box);
+    for (const f of g.fields) {
+      if (f.show_if && config[g.id][f.show_if[0]] !== f.show_if[1]) continue;
+      if (f.compact && !box.classList.contains("compact")) {
+        const h = document.createElement("div"); h.className = "section"; h.textContent = "Stat weights (item score)";
+        box.appendChild(h);
+        box = document.createElement("div"); box.className = "fields compact"; det.appendChild(box);
+      }
+      if (f.section) {
+        const h = document.createElement("div"); h.className = "section"; h.textContent = f.section; box.appendChild(h);
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "field" + (f.type === "bool" ? " bool" : "");
+      const input = makeInput(g.id, f);
+      const label = document.createElement("label"); label.htmlFor = input.id;
+      if (f.type === "bool") { label.appendChild(input); label.append(f.label); wrap.appendChild(label); }
+      else { label.textContent = f.label; wrap.append(label, input); }
+      if (f.help) { const h = document.createElement("div"); h.className = "help"; h.textContent = f.help; wrap.appendChild(h); }
+      box.appendChild(wrap);
+    }
+    form.appendChild(det);
+  }
+  updateRam();
+}
+
+// ---------- catalog / presets ----------
+function showCatalog() {
+  const n = (CATALOG.characters || []).length;
+  $("#catalogInfo").textContent = n
+    ? `${n} characters, danger ${CATALOG.dangers.join(", ")}, zones ${CATALOG.zones.join(", ")} — game ${CATALOG.game_version || "?"}, mod ${CATALOG.mod_version || "?"}`
+    : "No catalog yet: click “Refresh catalog from game” or start any run (the catalog is saved automatically).";
+}
+async function loadPresets() {
+  const list = await api("/api/presets");
+  const sel = $("#presetSel");
+  sel.innerHTML = '<option value="">—</option>' + list.map(n => `<option>${n.replace(/[<&>]/g, "")}</option>`).join("");
+}
+
+$("#catalogBtn").onclick = async () => {
+  const b = $("#catalogBtn"); b.disabled = true; b.textContent = "Fetching…";
+  try { CATALOG = await api("/api/catalog/refresh", {}); showCatalog(); render(); }
+  catch (e) { $("#error").textContent = "Catalog: " + e.message; }
+  finally { b.disabled = false; b.textContent = "Refresh catalog from game"; }
+};
+$("#presetSave").onclick = async () => {
+  const name = $("#presetName").value.trim();
+  try { await api("/api/presets", {name, config}); await loadPresets(); $("#presetSel").value = name; }
+  catch (e) { alert(e.message); }
+};
+$("#presetLoad").onclick = async () => {
+  const name = $("#presetSel").value; if (!name) return;
+  config = deepMerge(DEFAULTS, await api("/api/presets/" + encodeURIComponent(name)));
+  $("#presetName").value = name; save(); render();
+};
+$("#exportBtn").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(config, null, 1)], {type:"application/json"}));
+  a.download = "brotato_config.json"; a.click(); URL.revokeObjectURL(a.href);
+};
+$("#importBtn").onclick = () => $("#importFile").click();
+$("#importFile").onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try { config = deepMerge(DEFAULTS, JSON.parse(await file.text())); save(); render(); }
+  catch (err) { alert("Bad file: " + err.message); }
+  e.target.value = "";
+};
+$("#resetBtn").onclick = () => { if (confirm("Restore all default values?")) { config = deepMerge(DEFAULTS, {}); save(); render(); } };
+
+// ---------- RAM estimate ----------
+let SYSTEM = {};
+function ramEstimate() {
+  const per = SYSTEM.ram_per_instance_mb || {headless: 530, window: 580};
+  const n = Math.max(1, Math.min(config.env.instances || 1, config.run.episodes || 1));
+  const mb = n * (config.env.watch ? per.window : per.headless) + 250;  // + the panel's Python process
+  return {n, mb};
+}
+function updateRam() {
+  const {n, mb} = ramEstimate();
+  const gb = (x) => (x / 1024).toFixed(1) + " GB";
+  const el = $("#ramInfo");
+  let text = `${n} ${config.env.watch ? "windowed" : "headless"} ${n === 1 ? "instance" : "instances"} ≈ ${gb(mb)} RAM`;
+  let cls = "muted";
+  if (SYSTEM.ram_available_mb) {
+    text += ` · free now: ${gb(SYSTEM.ram_available_mb)} of ${gb(SYSTEM.ram_total_mb)}`;
+    if (mb > SYSTEM.ram_available_mb) { cls = "err"; text += " — NOT ENOUGH RAM: the system will start using the page file, games will slow down or crash."; }
+    else if (mb > 0.75 * SYSTEM.ram_available_mb) { cls = "warn"; text += " — warning: this will take most of the free memory."; }
+  }
+  if (SYSTEM.cpus && n > SYSTEM.cpus) text += ` · more instances than CPU cores (${SYSTEM.cpus}): each one will slow down.`;
+  if (config.env.watch && n > 1 && !["1", "0.5", "auto"].includes(String(config.env.speed)))
+    text += " · Several windows at a faster speed put a heavy load on the GPU and CPU; the real speed may be lower than chosen.";
+  el.textContent = text; el.className = cls;
+}
+async function refreshSystem() { try { SYSTEM = await api("/api/system"); } catch (_) {} updateRam(); }
+
+// ---------- run / status ----------
+$("#start").onclick = async () => {
+  $("#error").textContent = "";
+  await refreshSystem();
+  const {n, mb} = ramEstimate();
+  if (SYSTEM.ram_available_mb && mb > SYSTEM.ram_available_mb &&
+      !confirm(`${n} ${n === 1 ? "instance needs" : "instances need"} about ${(mb / 1024).toFixed(1)} GB RAM, but only ${(SYSTEM.ram_available_mb / 1024).toFixed(1)} GB is free. Start anyway?`)) return;
+  try { await api("/api/run", {config}); poll(); } catch (e) { $("#error").textContent = e.message; }
+};
+$("#stop").onclick = () => api("/api/stop", {}).catch(() => {});
+
+const STATE_PL = {idle:"idle", starting:"starting game…", running:"playing", stopping:"stopping…",
+                  stopped:"stopped", done:"done", error:"error"};
+let lastLog = "";
+function renderStatus(s) {
+  const st = $("#state"); st.textContent = STATE_PL[s.state] || s.state; st.className = "badge " + s.state;
+  const busy = ["starting","running","stopping"].includes(s.state);
+  $("#start").disabled = busy; $("#stop").disabled = !busy;
+  $("#epLabel").textContent = s.episodes ? `${s.episode}/${s.episodes}` : "";
+  $("#epProgress").max = Math.max(1, s.episodes); $("#epProgress").value = (s.results || []).length;
+  const c = s.current || {};
+  const cells = [["wave", c.wave], ["HP", c.hp !== undefined ? `${c.hp}/${c.max_hp}` : undefined], ["level", c.level],
+                 ["materials", c.materials], ["kills", c.kills], ["steps", c.steps], ["return", c.return], ["steps/s", c.steps_per_s]];
+  $("#current").innerHTML = cells.map(([k, v]) => `<div class="stat"><b>${v ?? "–"}</b><span>${k}</span></div>`).join("");
+  const workers = Object.entries(s.workers || {});
+  const wt = $("#workers");
+  wt.classList.toggle("hidden", workers.length < 2);
+  const WS_PL = {starting:"starting…", running:"playing", done:"done", stopped:"stopped", error:"error"};
+  wt.querySelector("tbody").innerHTML = workers.map(([id, w]) => {
+    const c = w.current || {};
+    return `<tr${w.error ? ` title="${String(w.error).replace(/"/g, "&quot;")}"` : ""}><td>${id}</td><td${w.error ? ' class="err"' : ""}>${WS_PL[w.state] || w.state}</td>
+      <td>${w.episode ?? "–"}</td><td>${c.wave ?? "–"}</td><td>${c.hp !== undefined ? `${c.hp}/${c.max_hp}` : "–"}</td>
+      <td>${c.steps_per_s ?? "–"}</td><td>${w.done}</td></tr>`;
+  }).join("");
+  $("#error").textContent = s.error || "";
+  const sm = s.summary;
+  $("#summary").textContent = sm ? `${sm.episodes} episodes · mean wave ${sm.mean_wave} · best ${sm.best_wave} · wins ${sm.wins} · mean return ${sm.mean_return}` : "No results yet.";
+  $("#results tbody").innerHTML = (s.results || []).map((r, i) => {
+    const dec = Object.entries(r.decisions || {}).map(([k, v]) => `${k}×${v}`).join(", ");
+    const parts = Object.entries(r.reward_parts || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+    return `<tr title="decisions: ${dec}&#10;reward: ${parts}"><td>${r.episode ?? i + 1}</td><td>${r.instance ?? ""}</td><td>${r.seed ?? ""}</td><td>${r.outcome}</td><td>${r.wave}</td>
+      <td>${r.return}</td><td>${r.steps}</td><td>${r.kills}</td><td>${r.materials}</td><td>${r.damage_taken}</td><td>${r.steps_per_s}</td></tr>`;
+  }).join("");
+  const log = (s.log || []).join("\n");
+  if (log !== lastLog) { const el = $("#log"); el.textContent = log; el.scrollTop = el.scrollHeight; lastLog = log; }
+  return busy;
+}
+let polling = false;
+async function poll() {
+  if (polling) return; polling = true;
+  try {
+    while (true) {
+      const s = await api("/api/status");
+      if (!renderStatus(s)) break;
+      await new Promise(r => setTimeout(r, 600));
+    }
+    const fresh = await api("/api/catalog");
+    if ((fresh.characters || []).length !== (CATALOG.characters || []).length) { CATALOG = fresh; showCatalog(); render(); }
+  } catch (e) { $("#error").textContent = "No connection to the panel: " + e.message; }
+  finally { polling = false; }
+}
+
+(async function init() {
+  const s = await api("/api/schema");
+  SCHEMA = s.schema; DEFAULTS = s.defaults;
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (_) {}
+  config = deepMerge(DEFAULTS, stored);
+  CATALOG = await api("/api/catalog");
+  showCatalog(); render(); loadPresets(); poll();
+  refreshSystem(); setInterval(refreshSystem, 15000);
+})();
+</script>
+</body>
+</html>

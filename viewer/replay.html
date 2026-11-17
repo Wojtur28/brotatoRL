@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrotatoRL – replays</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;
+    --contact: #2a78d6; --shooter: #6250d6; --charger: #eb6834; --spawner: #1baf7a;
+    --material: #008300; --projectile: #e34948; --fruit: #e87ba4; --crate: #eda100;
+    --windup: #eda100; --dash: #e34948; --player: #0b0b0b; --hp: #1baf7a; --hp-low: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;
+      --contact: #3987e5; --shooter: #9085e9; --charger: #d95926; --spawner: #199e70;
+      --material: #0ca30c; --projectile: #e66767; --fruit: #d55181; --crate: #c98500;
+      --windup: #c98500; --dash: #e66767; --player: #f0efec; --hp: #199e70; --hp-low: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.4 system-ui, "Segoe UI", sans-serif; }
+  header { padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+           border-bottom: 1px solid var(--grid); background: var(--surface); position: sticky; top: 0; z-index: 2; }
+  h1 { font-size: 16px; margin: 0 12px 0 0; }
+  button, select, input[type=file]::file-selector-button {
+    font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--axis);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--contact); outline-offset: 1px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .timeline { flex: 1 1 260px; display: flex; gap: 8px; align-items: center; min-width: 220px; }
+  .timeline input { flex: 1; }
+  .clock { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 64px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 16px; color: var(--ink-2); font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .ring { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid; }
+  main { padding: 12px 16px 24px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+  .panel { background: var(--surface); border: 1px solid var(--grid); border-radius: 8px; padding: 10px; min-width: 0; }
+  .panel h2 { font-size: 14px; margin: 0 0 2px; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
+  .hud { display: flex; flex-wrap: wrap; gap: 2px 14px; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; margin: 6px 0 0; }
+  .hud b { color: var(--ink); font-weight: 600; }
+  canvas { width: 100%; height: auto; display: block; background: var(--surface); border-radius: 4px; }
+  .log { color: var(--muted); font-size: 12px; margin-top: 4px; min-height: 1.4em; overflow-wrap: anywhere; }
+  .drop { margin: 24px 16px; padding: 32px 16px; border: 2px dashed var(--axis); border-radius: 10px; text-align: center; color: var(--ink-2); }
+  .drop.hover { border-color: var(--contact); }
+  .hint { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BrotatoRL – replays</h1>
+  <input id="files" type="file" accept=".gz,.json" multiple aria-label="Load replay files">
+  <div class="controls">
+    <button id="play" aria-label="Play / pause">▶ Play</button>
+    <button id="back" aria-label="5 s back">−5 s</button>
+    <button id="fwd" aria-label="5 s forward">+5 s</button>
+    <label>Speed <select id="speed">
+      <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option>
+      <option value="4">4×</option><option value="8">8×</option><option value="16">16×</option></select></label>
+    <label><input id="trail" type="checkbox" checked> character trail</label>
+  </div>
+  <div class="timeline"><input id="time" type="range" min="0" max="0" value="0" step="1" aria-label="Game time">
+    <span class="clock" id="clock">0:00</span></div>
+</header>
+<div class="legend" aria-label="Legend">
+  <span><i class="sw" style="background:var(--player)"></i>character</span>
+  <span><i class="sw" style="background:var(--contact)"></i>enemy: contact</span>
+  <span><i class="sw" style="background:var(--shooter)"></i>shooter</span>
+  <span><i class="sw" style="background:var(--charger)"></i>charger</span>
+  <span><i class="sw" style="background:var(--spawner)"></i>spawner</span>
+  <span><i class="ring" style="border-color:var(--windup)"></i>winding up an attack</span>
+  <span><i class="ring" style="border-color:var(--dash)"></i>dashing</span>
+  <span><i class="sw" style="background:var(--projectile)"></i>projectile</span>
+  <span>✕ spawn warning</span>
+  <span><i class="sw" style="background:var(--material)"></i>material</span>
+  <span><i class="sw" style="background:var(--fruit)"></i>fruit</span>
+  <span><i class="sw" style="background:var(--crate);border-radius:2px"></i>crate</span>
+</div>
+<div id="drop" class="drop">Drag replay files (<code>*.json.gz</code>) here, or use the button above.<br>
+  <span class="hint">Several files = several arenas side by side, synced by game time (e.g. the same seed across checkpoints).
+  Space: play/pause, arrow keys: ±5 s.</span></div>
+<main id="panels"></main>
+<script>
+"use strict";
+const ACTIONS = [[0,0],[1,0],[1,-1],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1],[1,1]];
+const replays = [];
+let T = 0, maxT = 0, playing = false, last = 0;
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+async function readReplay(blob, name) {
+  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  let text;
+  if (head[0] === 0x1f && head[1] === 0x8b) {
+    text = await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).text();
+  } else {
+    text = await blob.text();
+  }
+  const data = JSON.parse(text);
+  if (!data.frames || !data.frames.length) throw new Error("no frames");
+  let zone = null;
+  for (const f of data.frames) { if (f.z) zone = f.z; f._z = zone; }
+  data.name = name;
+  data.t0 = data.frames[0].t;
+  data.tEnd = data.frames[data.frames.length - 1].t;
+  return data;
+}
+
+function addPanel(r) {
+  const el = document.createElement("section");
+  el.className = "panel";
+  const m = r.meta || {};
+  const title = m.title || r.name;
+  const bits = [m.model && `model: ${String(m.model).split(/[\\/]/).pop()}`, m.steps_trained && `trained: ${fmtSteps(m.steps_trained)}`,
+    m.seed != null && `seed ${m.seed}`, m.outcome && `outcome: ${m.outcome === "died" ? "death" : m.outcome === "won" ? "win" : m.outcome} on wave ${m.wave}`]
+    .filter(Boolean).join(" · ");
+  el.innerHTML = `<h2></h2><div class="meta"></div><canvas width="800" height="600" role="img"></canvas><div class="hud"></div><div class="log"></div>`;
+  el.querySelector("h2").textContent = title;
+  el.querySelector(".meta").textContent = bits;
+  el.querySelector("canvas").setAttribute("aria-label", `Arena: ${title}`);
+  $("panels").appendChild(el);
+  r.el = el; r.canvas = el.querySelector("canvas"); r.hud = el.querySelector(".hud"); r.log = el.querySelector(".log");
+}
+
+function fmtSteps(n) { return n >= 1e6 ? (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M steps" : Math.round(n / 1e3) + "k steps"; }
+function fmtTime(frames) { const s = Math.max(0, Math.floor(frames / 60)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+
+function frameIndex(r, t) {
+  let lo = 0, hi = r.frames.length - 1;
+  if (t <= r.frames[0].t) return 0;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (r.frames[mid].t <= t) lo = mid; else hi = mid - 1; }
+  return lo;
+}
+
+function draw(r) {
+  const t = r.t0 + T, i = frameIndex(r, t), f = r.frames[i];
+  const cv = r.canvas, ctx = cv.getContext("2d");
+  const z = f._z || [0, 0, 2048, 1536];
+  const W = z[2] - z[0], H = z[3] - z[1];
+  const cssW = cv.clientWidth || 800, dpr = window.devicePixelRatio || 1;
+  const cw = Math.round(cssW * dpr), ch = Math.round(cssW * H / W * dpr);
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  const s = cw / W, X = (x) => (x - z[0]) * s, Y = (y) => (y - z[1]) * s;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.fillStyle = css("--surface"); ctx.fillRect(0, 0, cw, ch);
+  ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1 * dpr;
+  for (let gx = 256; gx < W; gx += 256) { ctx.beginPath(); ctx.moveTo(X(z[0] + gx), 0); ctx.lineTo(X(z[0] + gx), ch); ctx.stroke(); }
+  for (let gy = 256; gy < H; gy += 256) { ctx.beginPath(); ctx.moveTo(0, Y(z[1] + gy)); ctx.lineTo(cw, Y(z[1] + gy)); ctx.stroke(); }
+  ctx.strokeStyle = css("--axis"); ctx.lineWidth = 2 * dpr; ctx.strokeRect(1 * dpr, 1 * dpr, cw - 2 * dpr, ch - 2 * dpr);
+  const surface = css("--surface");
+  const dot = (x, y, rad, fill, ring) => {
+    ctx.beginPath(); ctx.arc(X(x), Y(y), rad, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+    if (ring) { ctx.lineWidth = 2 * dpr; ctx.strokeStyle = ring; ctx.stroke(); }
+  };
+  // spawn markers
+  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 2 * dpr;
+  const b = f.b || [];
+  for (let k = 0; k < b.length; k += 2) {
+    const x = X(b[k]), y = Y(b[k + 1]), d = 7 * dpr;
+    ctx.beginPath(); ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d); ctx.moveTo(x + d, y - d); ctx.lineTo(x - d, y + d); ctx.stroke();
+  }
+  const g = f.g || [], mat = css("--material");
+  for (let k = 0; k < g.length; k += 2) dot(g[k], g[k + 1], 3 * dpr, mat);
+  const c = f.c || [], fruit = css("--fruit"), crate = css("--crate");
+  for (let k = 0; k < c.length; k += 3) {
+    if (c[k + 2] === 0) dot(c[k], c[k + 1], 6 * dpr, fruit, surface);
+    else { const d = 7 * dpr; ctx.fillStyle = crate; ctx.fillRect(X(c[k]) - d, Y(c[k + 1]) - d, 2 * d, 2 * d); }
+  }
+  // character trail (last 3 s)
+  if ($("trail").checked) {
+    ctx.beginPath(); ctx.lineWidth = 2 * dpr; ctx.strokeStyle = css("--muted"); ctx.lineJoin = ctx.lineCap = "round";
+    let started = false;
+    for (let j = Math.max(0, i - 45); j <= i; j++) {
+      const q = r.frames[j]; if (q.w !== f.w) { started = false; continue; }
+      if (!started) { ctx.moveTo(X(q.p[0]), Y(q.p[1])); started = true; } else ctx.lineTo(X(q.p[0]), Y(q.p[1]));
+    }
+    ctx.stroke();
+  }
+  // enemies: x, y, kind, attack class, attack state, hp%
+  const e = f.e || [];
+  const cls = [css("--contact"), css("--shooter"), css("--charger"), css("--spawner")];
+  const windup = css("--windup"), dash = css("--dash");
+  for (let k = 0; k < e.length; k += 6) {
+    const kind = e[k + 2], st = e[k + 4];
+    const rad = (kind > 0 ? 14 : 8) * dpr;
+    dot(e[k], e[k + 1], rad, cls[e[k + 3]] || cls[0], st === 1 ? windup : st === 2 ? dash : surface);
+    if (kind > 0) {  // boss / elite: HP bar
+      const w = 30 * dpr, x = X(e[k]) - w / 2, y = Y(e[k + 1]) - rad - 7 * dpr;
+      ctx.fillStyle = css("--grid"); ctx.fillRect(x, y, w, 4 * dpr);
+      ctx.fillStyle = css("--hp-low"); ctx.fillRect(x, y, w * e[k + 5] / 100, 4 * dpr);
+    }
+  }
+  const pr = f.pr || [], proj = css("--projectile");
+  for (let k = 0; k < pr.length; k += 2) dot(pr[k], pr[k + 1], 3.5 * dpr, proj);
+  // character with HP ring and action arrow
+  const [px, py, hp, mhp] = f.p, frac = mhp > 0 ? hp / mhp : 0;
+  dot(px, py, 10 * dpr, css("--player"), surface);
+  ctx.beginPath(); ctx.lineWidth = 3 * dpr; ctx.strokeStyle = frac < 0.35 ? css("--hp-low") : css("--hp");
+  ctx.arc(X(px), Y(py), 15 * dpr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
+  let a = f.a;
+  if (typeof a === "number") a = ACTIONS[a] || [0, 0];
+  if (a && (a[0] || a[1])) {
+    const n = Math.hypot(a[0], a[1]), L = 34 * dpr, x0 = X(px), y0 = Y(py), x1 = x0 + a[0] / n * L, y1 = y0 + a[1] / n * L;
+    ctx.beginPath(); ctx.lineWidth = 2 * dpr; ctx.strokeStyle = css("--player"); ctx.lineCap = "round";
+    ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  const ended = t > r.tEnd;
+  if (ended) {
+    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(0, 0, cw, ch);
+    ctx.fillStyle = "#ffffff"; ctx.font = `600 ${22 * dpr}px system-ui, sans-serif`; ctx.textAlign = "center";
+    const m = r.meta || {};
+    ctx.fillText(m.outcome === "won" ? "WON" : m.outcome === "died" ? `DIED ON WAVE ${f.w}` : "END", cw / 2, ch / 2);
+  }
+  const enemies = e.length / 6;
+  r.hud.innerHTML = `<span>wave <b>${f.w}</b></span><span>wave time left <b>${f.tl.toFixed(0)} s</b></span>` +
+    `<span>HP <b>${hp}/${mhp}</b></span><span>level <b>${f.lv}</b></span><span>materials <b>${f.m}</b></span>` +
+    `<span>enemies <b>${enemies}</b></span><span>time <b>${fmtTime(f.t - r.t0)}</b></span>`;
+  if (f.d && f.d.length) r.lastDecisions = `wave ${f.w}: ` + f.d.map((d) => `${d.kind} ${d.action}${d.index != null ? " #" + d.index : ""}`).join(", ");
+  r.log.textContent = r.lastDecisions ? "last decisions: " + r.lastDecisions : "";
+}
+
+function render() { replays.forEach(draw); $("time").value = Math.round(T); $("clock").textContent = fmtTime(T); }
+
+function tick(now) {
+  if (playing) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    T = Math.min(maxT, T + dt * 60 * parseFloat($("speed").value));
+    if (T >= maxT) setPlaying(false);
+    render();
+  }
+  last = now;
+  requestAnimationFrame(tick);
+}
+
+function setPlaying(on) { playing = on; $("play").textContent = on ? "⏸ Pause" : "▶ Play"; }
+
+async function addFiles(list) {
+  for (const file of list) {
+    try { replays.push(await readReplay(file, file.name)); addPanel(replays[replays.length - 1]); }
+    catch (err) { alert(`Could not load ${file.name}: ${err.message}`); }
+  }
+  maxT = Math.max(0, ...replays.map((r) => r.tEnd - r.t0 + 60));
+  $("time").max = Math.round(maxT);
+  $("drop").style.display = replays.length ? "none" : "";
+  render();
+}
+
+async function addUrls(urls) {
+  for (const url of urls) {
+    try { const res = await fetch(url); if (!res.ok) throw new Error(res.status); await addFiles([new File([await res.blob()], url.split("/").pop())]); }
+    catch (err) { alert(`Could not fetch ${url}: ${err.message}`); }
+  }
+}
+
+$("files").addEventListener("change", (ev) => addFiles([...ev.target.files]));
+$("play").addEventListener("click", () => setPlaying(!playing && replays.length > 0));
+$("back").addEventListener("click", () => { T = Math.max(0, T - 300); render(); });
+$("fwd").addEventListener("click", () => { T = Math.min(maxT, T + 300); render(); });
+["input", "change"].forEach((n) => $("time").addEventListener(n, (ev) => { T = parseFloat(ev.target.value); render(); }));
+$("trail").addEventListener("change", render);
+window.addEventListener("resize", render);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.tagName === "INPUT" && ev.target.type !== "range") return;
+  if (ev.code === "Space") { ev.preventDefault(); setPlaying(!playing && replays.length > 0); }
+  if (ev.code === "ArrowLeft") { T = Math.max(0, T - 300); render(); }
+  if (ev.code === "ArrowRight") { T = Math.min(maxT, T + 300); render(); }
+});
+const drop = $("drop");
+["dragenter", "dragover"].forEach((n) => document.addEventListener(n, (ev) => { ev.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach((n) => document.addEventListener(n, () => drop.classList.remove("hover")));
+document.addEventListener("drop", (ev) => { ev.preventDefault(); addFiles([...ev.dataTransfer.files]); });
+const params = new URLSearchParams(location.search).getAll("r");
+if (params.length) addUrls(params);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

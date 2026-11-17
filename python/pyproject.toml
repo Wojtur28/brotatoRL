@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brotato-rl"
+version = "0.1.0"
+description = "Brotato as a Gymnasium environment (lockstep bridge through a Godot Mod Loader mod)"
+requires-python = ">=3.10"
+dependencies = ["gymnasium>=1.0", "numpy>=1.24"]
+
+[project.optional-dependencies]
+# Training (versions tested together on Python 3.13, Windows). Install torch from the CPU index:
+#   pip install "torch==2.14.1+cpu" --index-url https://download.pytorch.org/whl/cpu
+#   pip install -e "python[train]"
+train = ["torch==2.14.1", "stable-baselines3==2.9.2", "tensorboard==2.21.0", "tqdm==4.70.1", "rich==15.0.0"]
+
+[tool.setuptools]
+packages = ["brotato_rl", "brotato_rl.webui"]
+
+[tool.setuptools.package-data]
+brotato_rl = ["lab_files/*"]
+"brotato_rl.webui" = ["static/*"]

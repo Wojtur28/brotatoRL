@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+*.pyc
+
+# Generated locally: game copy and instance folders, training output, evaluations, recordings
+lab/
+runs/
+models/
+demos/
+results/
+showcase/
+backups/
+python/presets/
+
+# Decompiled game scripts: for local reading only, never commit or share
+reference/

@@ -1,0 +1,22 @@
+{
+	"name": "RLBridge",
+	"namespace": "BrotatoRL",
+	"version_number": "0.5.0",
+	"description": "Lets a local Python agent drive Brotato runs in lockstep (reinforcement learning environment). Inactive unless the game is started with --rl-port.",
+	"website_url": "",
+	"dependencies": [],
+	"extra": {
+		"godot": {
+			"authors": ["BrotatoRL"],
+			"optional_dependencies": [],
+			"compatible_game_version": ["1.1.15.4"],
+			"compatible_mod_loader_version": ["6.3.0"],
+			"incompatibilities": [],
+			"load_before": [],
+			"tags": [],
+			"config_schema": {},
+			"description_rich": "",
+			"image": null
+		}
+	}
+}
